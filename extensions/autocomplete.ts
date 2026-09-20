@@ -20,6 +20,20 @@ export const SLASH_TOKEN_BEFORE_CURSOR = /(?:^|[ \t])\/[^\s/]*$/;
 export const PATH_SEPARATOR_BEFORE_CURSOR = /(?:^|[ \t])\/[^\s/]*\//;
 
 /**
+ * Regex matching slash token at line start (optional leading whitespace followed by slash and optional non-whitespace chars).
+ */
+export const LINE_START_SLASH_REGEX = /^\s*\/[^\s]*$/;
+
+/**
+ * Checks whether the cursor is in a line-start slash command context (not inline).
+ */
+export function isLineStartSlashContext(lines: string[], cursorLine: number, cursorCol: number): boolean {
+  const line = lines[cursorLine] ?? "";
+  const beforeCursor = line.slice(0, cursorCol);
+  return LINE_START_SLASH_REGEX.test(beforeCursor);
+}
+
+/**
  * Creates an AutocompleteProvider that layers inline slash command, prompt template,
  * and skill completion on top of the existing provider.
  */
@@ -31,6 +45,11 @@ export function createInlineSlashAutocompleteProvider(
     triggerCharacters: Array.from(new Set([...(current.triggerCharacters ?? []), "/"])),
 
     async getSuggestions(lines: string[], cursorLine: number, cursorCol: number, options: { signal: AbortSignal; force?: boolean }): Promise<AutocompleteSuggestions | null> {
+      // If at line start / message start, delegate completely to current/native provider!
+      if (isLineStartSlashContext(lines, cursorLine, cursorCol)) {
+        return current.getSuggestions(lines, cursorLine, cursorCol, options);
+      }
+
       const line = lines[cursorLine] ?? "";
       const beforeCursor = line.slice(0, cursorCol);
 
@@ -126,6 +145,11 @@ export function createInlineSlashAutocompleteProvider(
     },
 
     applyCompletion(lines: string[], cursorLine: number, cursorCol: number, item: AutocompleteItem, prefix: string) {
+      // If completing at line start, delegate completely to current/native provider!
+      if (isLineStartSlashContext(lines, cursorLine, cursorCol)) {
+        return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+      }
+
       const line = lines[cursorLine] ?? "";
       const beforeCursor = line.slice(0, cursorCol);
       const afterCursor = line.slice(cursorCol);

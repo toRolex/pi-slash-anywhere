@@ -67,4 +67,21 @@ test("InlineSlashEditor: triggers autocomplete when inline slash is typed", () =
   editor.handleInput("\t");
   assert.equal(autocompleteTriggeredCount, 3);
   assert.equal(lastExplicitTab, true);
+
+  // Case 5: Line start slash does not trigger custom inline autocomplete
+  const lineStartEditor = new InlineSlashEditor(mockTui, mockTheme, mockKeybindings);
+  let customTriggeredCount = 0;
+  // Override tryTriggerAutocomplete to observe calls from checkAndTriggerInlineSlash
+  // Note: super.handleInput("/") will call base tryTriggerAutocomplete because '/' is at start of message
+  // But when typing further letters like 't', base Editor checks isInSlashCommandContext
+  // Check that custom Tab handler doesn't intercept line start
+  lineStartEditor.handleInput("/");
+  lineStartEditor.handleInput("t");
+  (lineStartEditor as any).tryTriggerAutocomplete = () => {
+    customTriggeredCount++;
+  };
+  // Pressing Tab on line start slash command should NOT be handled by InlineSlashEditor's inline Tab branch
+  // Base editor handles tab completion in super.handleInput("\t")
+  lineStartEditor.handleInput("\t");
+  assert.equal(customTriggeredCount, 0);
 });

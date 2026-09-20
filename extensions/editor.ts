@@ -28,8 +28,8 @@ export class InlineSlashEditor extends CustomEditor {
     const currentLine = lines[cursor.line] || "";
     const beforeCursor = currentLine.slice(0, cursor.col);
 
-    // Skip if cursor is at the line-start slash command context (handled natively by Editor)
-    if (beforeCursor.trimStart().startsWith("/") && !beforeCursor.trimStart().includes(" ")) {
+    // Skip if cursor is at line-start slash context (handled natively by Editor)
+    if (/^\s*\/[^\s]*$/.test(beforeCursor)) {
       return;
     }
 
@@ -47,7 +47,8 @@ export class InlineSlashEditor extends CustomEditor {
       const lines = this.getLines();
       const currentLine = lines[cursor.line] || "";
       const beforeCursor = currentLine.slice(0, cursor.col);
-      if (!beforeCursor.trimStart().startsWith("/") && INLINE_SLASH_TRIGGER.test(beforeCursor)) {
+      // Only handle inline triggers, not line-start triggers (line-start is native)
+      if (!/^\s*\/[^\s]*$/.test(beforeCursor) && INLINE_SLASH_TRIGGER.test(beforeCursor)) {
         (this as unknown as { tryTriggerAutocomplete?: (explicitTab?: boolean) => void }).tryTriggerAutocomplete?.(true);
         return;
       }

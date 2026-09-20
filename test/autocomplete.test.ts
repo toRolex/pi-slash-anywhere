@@ -60,20 +60,45 @@ const mockCandidates: SlashCommandInfo[] = [
   },
 ];
 
-test("Start of line trigger (/)", async () => {
-  const current = createMockCurrentProvider();
+test("Start of line trigger (/): delegates completely to current/native provider", async () => {
+  let currentGetSuggestionsCalled = false;
+  const current = createMockCurrentProvider({
+    async getSuggestions(_lines, _line, _col, _opts) {
+      currentGetSuggestionsCalled = true;
+      return {
+        prefix: "/",
+        items: [
+          { value: "tree", label: "tree", description: "Show file tree" },
+          { value: "vlog", label: "vlog", description: "Video log" },
+          { value: "help", label: "help", description: "Show help" },
+        ],
+      };
+    },
+  });
   const provider = createInlineSlashAutocompleteProvider(current, () => mockCandidates);
 
   const lines = ["/"];
   const suggestions = await provider.getSuggestions(lines, 0, 1, { signal: new AbortController().signal });
 
+  assert.equal(currentGetSuggestionsCalled, true);
   assert.ok(suggestions);
   assert.equal(suggestions.prefix, "/");
-  assert.equal(suggestions.items.length, 4);
   assert.deepEqual(
     suggestions.items.map((it) => it.value),
-    ["/help", "/review", "/skill:codebase-design", "/skill:git-flow"]
+    ["tree", "vlog", "help"]
   );
+
+  // Line start with text like "/tr"
+  const lines2 = ["/tr"];
+  const suggestions2 = await provider.getSuggestions(lines2, 0, 3, { signal: new AbortController().signal });
+  assert.equal(currentGetSuggestionsCalled, true);
+  assert.ok(suggestions2);
+
+  // Line start with leading spaces "  /"
+  const lines3 = ["  /"];
+  const suggestions3 = await provider.getSuggestions(lines3, 0, 3, { signal: new AbortController().signal });
+  assert.equal(currentGetSuggestionsCalled, true);
+  assert.ok(suggestions3);
 });
 
 test("Mid-sentence trigger (check this /)", async () => {
@@ -89,9 +114,9 @@ test("Mid-sentence trigger (check this /)", async () => {
   assert.ok(suggestions.items.some((it) => it.value === "/help"));
   assert.ok(suggestions.items.some((it) => it.value === "/skill:codebase-design"));
 
-  // Tab trigger check
-  const tabLines = ["\t/"];
-  const tabSuggestions = await provider.getSuggestions(tabLines, 0, 2, { signal: new AbortController().signal });
+  // Mid-sentence trigger with tab
+  const tabLines = ["check this\t/"];
+  const tabSuggestions = await provider.getSuggestions(tabLines, 0, tabLines[0].length, { signal: new AbortController().signal });
   assert.ok(tabSuggestions);
   assert.equal(tabSuggestions.prefix, "/");
 });
@@ -162,11 +187,11 @@ test("Path conflict resolution: /dir/file retreats to file completion and should
   assert.equal(triggerResult, false);
 });
 
-test("Aggregation: candidates include commands, templates, and skills", async () => {
+test("Aggregation: candidates include commands, templates, and skills inline", async () => {
   const current = createMockCurrentProvider();
   const provider = createInlineSlashAutocompleteProvider(current, () => mockCandidates);
 
-  const suggestions = await provider.getSuggestions(["/"], 0, 1, { signal: new AbortController().signal });
+  const suggestions = await provider.getSuggestions(["inline /"], 0, 8, { signal: new AbortController().signal });
   assert.ok(suggestions);
 
   const command = suggestions.items.find((it) => it.value === "/help");
@@ -188,12 +213,12 @@ test("Aggregation: candidates include commands, templates, and skills", async ()
   assert.equal(skill2.label, "/skill:git-flow");
 });
 
-test("Prefix narrowing: /skill: filters strictly to skills", async () => {
+test("Prefix narrowing: /skill: filters strictly to skills inline", async () => {
   const current = createMockCurrentProvider();
   const provider = createInlineSlashAutocompleteProvider(current, () => mockCandidates);
 
-  // When typing `/skill:`
-  const suggestions = await provider.getSuggestions(["/skill:"], 0, 7, { signal: new AbortController().signal });
+  // When typing `use /skill:`
+  const suggestions = await provider.getSuggestions(["use /skill:"], 0, 11, { signal: new AbortController().signal });
   assert.ok(suggestions);
   assert.equal(suggestions.prefix, "/skill:");
   assert.equal(suggestions.items.length, 2);
@@ -202,22 +227,22 @@ test("Prefix narrowing: /skill: filters strictly to skills", async () => {
     ["/skill:codebase-design", "/skill:git-flow"]
   );
 
-  // When typing `/skill:git`
-  const gitSuggestions = await provider.getSuggestions(["/skill:git"], 0, 10, { signal: new AbortController().signal });
+  // When typing `use /skill:git`
+  const gitSuggestions = await provider.getSuggestions(["use /skill:git"], 0, 14, { signal: new AbortController().signal });
   assert.ok(gitSuggestions);
   assert.equal(gitSuggestions.prefix, "/skill:git");
   assert.equal(gitSuggestions.items.length, 1);
   assert.equal(gitSuggestions.items[0].value, "/skill:git-flow");
 
-  // When typing `/hel`
-  const cmdSuggestions = await provider.getSuggestions(["/hel"], 0, 4, { signal: new AbortController().signal });
+  // When typing `run /hel`
+  const cmdSuggestions = await provider.getSuggestions(["run /hel"], 0, 8, { signal: new AbortController().signal });
   assert.ok(cmdSuggestions);
   assert.equal(cmdSuggestions.prefix, "/hel");
   assert.equal(cmdSuggestions.items.length, 1);
   assert.equal(cmdSuggestions.items[0].value, "/help");
 });
 
-test("Fuzzy matching: /h matches both commands like /help and skills like /skill:handoff", async () => {
+test("Fuzzy matching: inline /h matches both commands like /help and skills like /skill:handoff", async () => {
   const customCandidates: SlashCommandInfo[] = [
     {
       name: "help",
@@ -242,15 +267,6 @@ test("Fuzzy matching: /h matches both commands like /help and skills like /skill
   const current = createMockCurrentProvider();
   const provider = createInlineSlashAutocompleteProvider(current, () => customCandidates);
 
-  // Typing /h should match both help and handoff, but not clear
-  const suggestions = await provider.getSuggestions(["/h"], 0, 2, { signal: new AbortController().signal });
-  assert.ok(suggestions);
-  assert.equal(suggestions.prefix, "/h");
-  const values = suggestions.items.map((it) => it.value);
-  assert.ok(values.includes("/help"));
-  assert.ok(values.includes("/skill:handoff"));
-  assert.ok(!values.includes("/clear"));
-
   // Typing mid-sentence "please use /h"
   const midSentence = await provider.getSuggestions(["please use /h"], 0, "please use /h".length, { signal: new AbortController().signal });
   assert.ok(midSentence);
@@ -258,6 +274,7 @@ test("Fuzzy matching: /h matches both commands like /help and skills like /skill
   const midValues = midSentence.items.map((it) => it.value);
   assert.ok(midValues.includes("/help"));
   assert.ok(midValues.includes("/skill:handoff"));
+  assert.ok(!midValues.includes("/clear"));
 });
 
 test("applyCompletion: replaces token, adds trailing space, cursor is placed after space", () => {
@@ -269,11 +286,18 @@ test("applyCompletion: replaces token, adds trailing space, cursor is placed aft
     label: "/skill:codebase-design",
   };
 
-  // Case 1: Start of line
-  const res1 = provider.applyCompletion(["/sk"], 0, 3, item, "/sk");
-  assert.deepEqual(res1.lines, ["/skill:codebase-design "]);
-  assert.equal(res1.cursorLine, 0);
-  assert.equal(res1.cursorCol, "/skill:codebase-design ".length);
+  // Case 1: Line start delegates to current provider
+  let currentApplyCalled = false;
+  const lineStartCurrent = createMockCurrentProvider({
+    applyCompletion(lines, line, col, it, pfx) {
+      currentApplyCalled = true;
+      return { lines: ["/tree "], cursorLine: line, cursorCol: 6 };
+    },
+  });
+  const lineStartProvider = createInlineSlashAutocompleteProvider(lineStartCurrent, () => mockCandidates);
+  const lineStartRes = lineStartProvider.applyCompletion(["/tree"], 0, 5, { value: "tree", label: "tree" }, "/tree");
+  assert.equal(currentApplyCalled, true);
+  assert.deepEqual(lineStartRes.lines, ["/tree "]);
 
   // Case 2: Mid-sentence
   const input2 = ["Please use /skill:cod to help me"];
@@ -285,14 +309,14 @@ test("applyCompletion: replaces token, adds trailing space, cursor is placed aft
   assert.equal(res2.cursorCol, 11 + "/skill:codebase-design ".length);
 
   // Case 3: Fallback to current provider if prefix does not match end of beforeCursor
-  let currentApplyCalled = false;
+  let fallbackApplyCalled = false;
   const customCurrent = createMockCurrentProvider({
     applyCompletion(lines, line, col, it, pfx) {
-      currentApplyCalled = true;
+      fallbackApplyCalled = true;
       return { lines, cursorLine: line, cursorCol: col };
     },
   });
   const customProvider = createInlineSlashAutocompleteProvider(customCurrent, () => mockCandidates);
-  customProvider.applyCompletion(["something"], 0, 9, item, "/unknown");
-  assert.equal(currentApplyCalled, true);
+  customProvider.applyCompletion(["something /test"], 0, 15, item, "/unknown");
+  assert.equal(fallbackApplyCalled, true);
 });
