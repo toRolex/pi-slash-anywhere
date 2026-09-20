@@ -1,4 +1,5 @@
 import type { AutocompleteProvider, AutocompleteSuggestions, AutocompleteItem } from "@earendil-works/pi-tui";
+import { fuzzyFilter } from "@earendil-works/pi-tui";
 import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 
 /**
@@ -6,17 +7,17 @@ import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
  * Must start either at line start or after whitespace (space or tab),
  * followed by a slash and optional non-whitespace characters until the cursor.
  */
-const INLINE_SLASH_TRIGGER = /(?:^|[ \t])\/([^\s]*)$/;
+export const INLINE_SLASH_TRIGGER = /(?:^|[ \t])\/([^\s]*)$/;
 
 /**
  * Regex checking if text before cursor is currently a slash command prefix without path separators.
  */
-const SLASH_TOKEN_BEFORE_CURSOR = /(?:^|[ \t])\/[^\s/]*$/;
+export const SLASH_TOKEN_BEFORE_CURSOR = /(?:^|[ \t])\/[^\s/]*$/;
 
 /**
  * Regex checking if text before cursor contains path separators after a slash token.
  */
-const PATH_SEPARATOR_BEFORE_CURSOR = /(?:^|[ \t])\/[^\s/]*\//;
+export const PATH_SEPARATOR_BEFORE_CURSOR = /(?:^|[ \t])\/[^\s/]*\//;
 
 /**
  * Creates an AutocompleteProvider that layers inline slash command, prompt template,
@@ -47,18 +48,24 @@ export function createInlineSlashAutocompleteProvider(
 
       const rawCandidates = await getCandidates();
 
-      // Aggregate commands, prompt templates, and skills into candidate suggestions
-      // Commands/templates: value and label `/${item.name}`
-      // Skills: value and label `/skill:${skillName}` (handle item.name being `skill:name` or source === 'skill')
-      const items: AutocompleteItem[] = [];
+      // Intermediate candidate structure for fuzzy matching and label/value formatting
+      interface InternalCandidate {
+        item: AutocompleteItem;
+        isSkill: boolean;
+        skillName?: string;
+        commandName: string;
+      }
+
+      const candidates: InternalCandidate[] = [];
 
       for (const item of rawCandidates) {
         const isSkill = item.source === "skill" || item.name.startsWith("skill:");
         let value: string;
         let label: string;
+        let skillName: string | undefined;
 
         if (isSkill) {
-          const skillName = item.name.startsWith("skill:")
+          skillName = item.name.startsWith("skill:")
             ? item.name.slice("skill:".length)
             : item.name;
           value = `/skill:${skillName}`;
@@ -68,31 +75,52 @@ export function createInlineSlashAutocompleteProvider(
           label = `/${item.name}`;
         }
 
-        items.push({
-          value,
-          label,
-          description: item.description,
+        candidates.push({
+          item: {
+            value,
+            label,
+            description: item.description,
+          },
+          isSkill,
+          skillName,
+          commandName: item.name,
         });
       }
 
-      // Dynamic narrowing: if token starts with `skill:`, strictly filter only skills!
-      const isNarrowedToSkill = token.startsWith("skill:");
       const prefix = `/${token}`;
 
-      let filtered = items;
-      if (isNarrowedToSkill) {
-        filtered = filtered.filter((it) => it.value.startsWith("/skill:"));
+      let matchedItems: AutocompleteItem[] = [];
+
+      if (!token) {
+        // When query is empty (just "/"), return all candidates
+        matchedItems = candidates.map((c) => c.item);
+      } else if (token.startsWith("skill:")) {
+        // Explicit skill narrowing: only skills match, query without "skill:"
+        const skillQuery = token.slice("skill:".length);
+        const skillCandidates = candidates.filter((c) => c.isSkill);
+        if (!skillQuery) {
+          matchedItems = skillCandidates.map((c) => c.item);
+        } else {
+          const filtered = fuzzyFilter(
+            skillCandidates,
+            skillQuery,
+            (c) => c.skillName ?? ""
+          );
+          matchedItems = filtered.map((c) => c.item);
+        }
+      } else {
+        // General query: both commands and skills match
+        // For skills, match against bare skillName or commandName, so /h matches hypothesis/handoff
+        const filtered = fuzzyFilter(
+          candidates,
+          token,
+          (c) => (c.isSkill ? (c.skillName ?? c.commandName) : c.commandName)
+        );
+        matchedItems = filtered.map((c) => c.item);
       }
 
-      // Filter by prefix (case-insensitive for convenience or exact prefix match)
-      const tokenLower = token.toLowerCase();
-      filtered = filtered.filter((it) => {
-        const valWithoutSlash = it.value.slice(1).toLowerCase();
-        return valWithoutSlash.startsWith(tokenLower);
-      });
-
       return {
-        items: filtered,
+        items: matchedItems,
         prefix,
       };
     },

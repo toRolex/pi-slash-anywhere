@@ -217,6 +217,49 @@ test("Prefix narrowing: /skill: filters strictly to skills", async () => {
   assert.equal(cmdSuggestions.items[0].value, "/help");
 });
 
+test("Fuzzy matching: /h matches both commands like /help and skills like /skill:handoff", async () => {
+  const customCandidates: SlashCommandInfo[] = [
+    {
+      name: "help",
+      description: "Show help message",
+      source: "extension",
+      sourceInfo: { kind: "extension", extensionId: "core" } as any,
+    },
+    {
+      name: "handoff",
+      description: "Handoff task",
+      source: "skill",
+      sourceInfo: { kind: "skill" } as any,
+    },
+    {
+      name: "clear",
+      description: "Clear screen",
+      source: "extension",
+      sourceInfo: { kind: "extension", extensionId: "core" } as any,
+    },
+  ];
+
+  const current = createMockCurrentProvider();
+  const provider = createInlineSlashAutocompleteProvider(current, () => customCandidates);
+
+  // Typing /h should match both help and handoff, but not clear
+  const suggestions = await provider.getSuggestions(["/h"], 0, 2, { signal: new AbortController().signal });
+  assert.ok(suggestions);
+  assert.equal(suggestions.prefix, "/h");
+  const values = suggestions.items.map((it) => it.value);
+  assert.ok(values.includes("/help"));
+  assert.ok(values.includes("/skill:handoff"));
+  assert.ok(!values.includes("/clear"));
+
+  // Typing mid-sentence "please use /h"
+  const midSentence = await provider.getSuggestions(["please use /h"], 0, "please use /h".length, { signal: new AbortController().signal });
+  assert.ok(midSentence);
+  assert.equal(midSentence.prefix, "/h");
+  const midValues = midSentence.items.map((it) => it.value);
+  assert.ok(midValues.includes("/help"));
+  assert.ok(midValues.includes("/skill:handoff"));
+});
+
 test("applyCompletion: replaces token, adds trailing space, cursor is placed after space", () => {
   const current = createMockCurrentProvider();
   const provider = createInlineSlashAutocompleteProvider(current, () => mockCandidates);
