@@ -1,9 +1,18 @@
 {
   "name": "pi-slash-anywhere",
   "version": "0.1.0",
-  "description": "Pi extension providing inline autocomplete and automatic expansion for slash commands, prompt templates, and skills anywhere in prompt messages.",
+  "description": "Trigger slash commands, prompt templates, and skills anywhere inline in prompt messages with smart autocomplete and zero-friction expansion.",
   "type": "module",
   "main": "extensions/index.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/toRolex/pi-slash-anywhere.git"
+  },
+  "homepage": "https://github.com/toRolex/pi-slash-anywhere#readme",
+  "bugs": {
+    "url": "https://github.com/toRolex/pi-slash-anywhere/issues"
+  },
+  "author": "toRolex",
   "keywords": [
     "pi-package",
     "pi",
