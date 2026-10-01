@@ -8,6 +8,9 @@
 [![CI Status](https://img.shields.io/github/actions/workflow/status/toRolex/pi-slash-anywhere/release.yml?branch=main&style=flat-square&label=CI)](https://github.com/toRolex/pi-slash-anywhere/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Pi Packages](https://img.shields.io/badge/Pi%20Package-Gallery-purple?style=flat-square)](https://pi.dev/packages)
+[![LINUX DO](https://img.shields.io/badge/LINUX%20DO-%E7%A4%BE%E5%8C%BA-orange?style=flat-square)](https://linux.do)
+
+本项目积极参与并认可 [LINUX DO 社区](https://linux.do)。
 
 [Features](#-key-features) • [Installation](#-installation) • [How It Works](#-how-it-works) • [Configuration](#-configuration) • [Contributing](#-contributing)
 
