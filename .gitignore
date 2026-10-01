@@ -4,3 +4,7 @@ dist/
 *.log
 .pi/
 
+
+## Local agent dirs
+.claude/
+.codex/

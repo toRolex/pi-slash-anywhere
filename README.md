@@ -11,6 +11,8 @@
 
 [Features](#-key-features) • [Installation](#-installation) • [How It Works](#-how-it-works) • [Configuration](#-configuration) • [Contributing](#-contributing)
 
+[中文](README.zh-CN.md)
+
 ---
 
 </div>
