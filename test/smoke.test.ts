@@ -12,6 +12,7 @@ test("smoke test: extension entry can be invoked with mock pi context", () => {
   let registered = false;
   const mockPi = {
     on: () => {},
+    registerMarkdownTransformer: () => {},
     registerCommand: () => {
       registered = true;
     },
