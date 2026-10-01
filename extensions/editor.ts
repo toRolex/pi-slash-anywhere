@@ -10,13 +10,16 @@ import { INLINE_SLASH_TRIGGER } from "./autocomplete.js";
  * detects inline slash patterns and explicitly triggers autocomplete.
  */
 export class InlineSlashEditor extends CustomEditor {
+  private readonly getToolsExpanded?: () => boolean;
+
   constructor(
     tui: TUI,
     theme: EditorTheme,
     keybindings: KeybindingsManager,
-    options?: { embedWorkingStatus?: boolean }
+    options?: { embedWorkingStatus?: boolean; getToolsExpanded?: () => boolean }
   ) {
     super(tui, theme, keybindings, options);
+    this.getToolsExpanded = options?.getToolsExpanded;
   }
 
   private checkAndTriggerInlineSlash(): void {
@@ -55,7 +58,12 @@ export class InlineSlashEditor extends CustomEditor {
     }
 
     // Delegate to CustomEditor standard input handling (keybindings, actions, text insertion)
+    const wasExpanded = this.getToolsExpanded?.();
     super.handleInput(data);
+    if (wasExpanded !== this.getToolsExpanded?.()) {
+      // Native toggles skip user Markdown, whose same-width cache must also expire.
+      this.tui.invalidate();
+    }
 
     // Check if we typed or deleted characters that now form an inline slash trigger
     this.checkAndTriggerInlineSlash();
