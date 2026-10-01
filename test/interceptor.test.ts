@@ -211,6 +211,7 @@ test("registerInlineSkillInterceptor: transforms user interactive input", async 
 test("smoke test: index entry registers both autocomplete and interceptor", () => {
   const eventsRegistered: string[] = [];
   const mockPi = {
+    registerMarkdownTransformer: () => {},
     on: (event: string, _handler: any) => {
       eventsRegistered.push(event);
       return () => {};
