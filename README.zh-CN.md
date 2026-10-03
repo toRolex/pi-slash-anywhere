@@ -154,6 +154,12 @@ npm run typecheck
 
 ---
 
+## 友情链接
+
+感谢 [LINUX DO 社区](https://linux.do/) 朋友们的支持与反馈。
+
+---
+
 ## 🤝 参与贡献与许可
 
 欢迎提交贡献、issue 和功能请求！欢迎访问 [issues 页面](https://github.com/toRolex/pi-slash-anywhere/issues)。
