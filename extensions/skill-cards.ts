@@ -30,6 +30,9 @@ type PatchOwner = {
   wrappers: Map<string, Rebuild | SetExpanded>;
   mounted: WeakMap<UserFields, MountedCards>;
   refs: Set<WeakRef<UserFields>>;
+  registered: WeakSet<UserFields>;
+  registrations: number;
+  sweepAt: number;
   dispose: () => string[];
 };
 const slot = Symbol.for("pi-slash-anywhere.skill-cards.v1");
@@ -60,7 +63,7 @@ export function installSkillCards(
   }
   const originalRebuild = proto.rebuild;
   const originalExpanded = proto.setExpanded;
-  const owner: PatchOwner = { active: true, descriptors, wrappers: new Map(), mounted: new WeakMap(), refs: new Set(), dispose: () => [] };
+  const owner: PatchOwner = { active: true, descriptors, wrappers: new Map(), mounted: new WeakMap(), refs: new Set(), registered: new WeakSet(), registrations: 0, sweepAt: 1, dispose: () => [] };
   const rebuild: Rebuild = function () {
     if (!owner.active) return originalRebuild.call(this);
     const previous = owner.mounted.get(this);
@@ -80,7 +83,8 @@ export function installSkillCards(
         const parsed = parse(block.raw);
         if (!parsed || parsed.userMessage !== undefined) throw new Error("invalid skill block");
         const card = new skill(parsed, this.markdownTheme, this.outputPad);
-        const old = previous?.entries.find(entry => entry.raw === block.raw && entry.ordinal === block.ordinal);
+        const previousEntry = previous?.entries[block.ordinal];
+        const old = previousEntry && previousEntry.raw === block.raw ? previousEntry : undefined;
         if (!old && expanded === undefined) pendingInitialSync = true;
         card.setExpanded(old ? old.card.expanded : expanded ?? false);
         return { raw: block.raw, ordinal: block.ordinal, card };
@@ -90,9 +94,14 @@ export function installSkillCards(
       children.push(...tail.children);
       this.children = children;
       owner.mounted.set(this, { entries, pendingInitialSync });
-      if (!previous) {
-        for (const ref of owner.refs) if (!ref.deref()) owner.refs.delete(ref);
-        if (![...owner.refs].some(ref => ref.deref() === this)) owner.refs.add(new WeakRef(this));
+      if (!previous && !owner.registered.has(this)) {
+        owner.registered.add(this);
+        owner.refs.add(new WeakRef(this));
+        owner.registrations += 1;
+        if (owner.registrations >= owner.sweepAt) {
+          for (const ref of owner.refs) if (!ref.deref()) owner.refs.delete(ref);
+          owner.sweepAt *= 2;
+        }
       }
     } catch {
       owner.mounted.delete(this);
@@ -138,7 +147,8 @@ export function installSkillCards(
       if (expanded === undefined) return;
       for (const ref of owner.refs) {
         const parent = ref.deref();
-        const mounted = parent && owner.mounted.get(parent);
+        if (!parent) { owner.refs.delete(ref); continue; }
+        const mounted = owner.mounted.get(parent);
         if (!mounted?.pendingInitialSync) continue;
         for (const entry of mounted.entries) entry.card.setExpanded(expanded);
         mounted.pendingInitialSync = false;

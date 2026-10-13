@@ -1,9 +1,10 @@
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, mkdtempSync, realpathSync } from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { quote, tmux, sleep, hash, snapshotExtensionHashes } from './inline-skill-verification-helpers.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cli = process.env.INLINE_VERIFY_CLI ?? '/Users/rolex/Library/pnpm/bin/pi';
@@ -13,27 +14,11 @@ const project = `${repo}/extensions/index.ts`;
 const base = `${repo}/.agents/notes/inline-skill-runtime/final`;
 mkdirSync(base, { recursive: true });
 const out = mkdtempSync(`${base}/run.`);
-const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
-const tmux = (...args) => execFileSync('tmux', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-const sleep = ms => new Promise(done => setTimeout(done, ms));
-const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex');
 const reports = [];
 const owned = new Set();
 const kill = name => { try { tmux('kill-session', '-t', name); } catch {} owned.delete(name); };
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { for (const name of owned) kill(name); process.exit(130); });
-function hashes() {
-  const result = [];
-  function walk(path) {
-    for (const entry of readdirSync(path, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      const file = `${path}/${entry.name}`;
-      if (entry.isDirectory()) walk(file);
-      else if (entry.isFile() || entry.isSymbolicLink()) result.push({ path: file.slice(ccRoot.length + 1), sha256: hash(file) });
-    }
-  }
-  walk(`${ccRoot}/extensions`);
-  return result;
-}
-const before = hashes();
+const before = snapshotExtensionHashes(ccRoot);
 writeFileSync(`${out}/cc-hashes-before.json`, JSON.stringify(before, null, 2));
 const tail = 'USER_TAIL_SENTINEL';
 const names = ['first', 'second', 'third'];
@@ -184,7 +169,7 @@ try {
     }
   }
 } finally {
-  const after = hashes();
+  const after = snapshotExtensionHashes(ccRoot);
   writeFileSync(`${out}/cc-hashes-after.json`, JSON.stringify(after, null, 2));
   const unchanged = JSON.stringify(before) === JSON.stringify(after);
   writeFileSync(`${out}/summary.json`, JSON.stringify({ reports, ccHashesUnchanged: unchanged, ccFiles: before.length, command: 'node scripts/verify-inline-skill-cards.mjs', scope: 'regular short three-card initial, global expansion, CC mode and actual reload' }, null, 2));

@@ -316,3 +316,55 @@ test("scanner retains UTF-16 offsets, repeated raw ordinals and exact tail, and 
     assert.equal(scanLeadingSkills(text).valid, false);
   }
 });
+
+supportedTest("mount tracking sweeps tracked references on a doubling schedule instead of once per mount", () => {
+  const originalDeref = WeakRef.prototype.deref;
+  let derefs = 0;
+  WeakRef.prototype.deref = function (this: WeakRef<object>) {
+    derefs += 1;
+    return originalDeref.call(this);
+  };
+  const adapter = installSkillCards({ getExpanded: () => false, fallbackTransformer: fallback }, namespaces);
+  const firstBatch: Parent[] = [];
+  const secondBatch: Parent[] = [];
+  try {
+    for (let index = 0; index < 64; index += 1) firstBatch.push(parent());
+    const firstScan = derefs;
+    for (let index = 0; index < 64; index += 1) secondBatch.push(parent());
+    const secondScan = derefs - firstScan;
+    assert.ok(firstScan > 0, "registration must sweep tracked references at least once");
+    assert.ok(secondScan <= firstScan * 2,
+      `second 64 mounts scanned ${secondScan} references versus ${firstScan} for the first 64; expected amortized doubling, not a full scan per mount`);
+  } finally {
+    WeakRef.prototype.deref = originalDeref;
+    assert.deepEqual(adapter.dispose(), []);
+  }
+});
+
+supportedTest("fallback then remount registers one reference so dispose restores the parent exactly once", () => {
+  const proto = RealHost.UserMessageComponent.prototype as unknown as Parent;
+  const old = Object.getOwnPropertyDescriptor(proto, "rebuild")!;
+  const original = proto.rebuild;
+  let target: Parent | undefined;
+  let disposing = false;
+  let restores = 0;
+  proto.rebuild = function () {
+    if (disposing && this === target) restores += 1;
+    return original.call(this);
+  };
+  const adapter = installSkillCards({ getExpanded: () => true, fallbackTransformer: fallback }, namespaces);
+  try {
+    target = parent();
+    target.text = "no leading skill";
+    target.rebuild();
+    target.text = payload;
+    target.rebuild();
+    disposing = true;
+    assert.deepEqual(adapter.dispose(), []);
+    assert.equal(restores, 1);
+  } finally {
+    disposing = false;
+    adapter.dispose();
+    Object.defineProperty(proto, "rebuild", old);
+  }
+});

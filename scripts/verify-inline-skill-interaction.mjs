@@ -1,9 +1,10 @@
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { quote, tmux, sleep, hash, snapshotExtensionHashes } from './inline-skill-verification-helpers.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cli = process.env.INLINE_VERIFY_CLI ?? '/Users/rolex/Library/pnpm/bin/pi';
@@ -14,23 +15,7 @@ const observer = `${repo}/scripts/observe-inline-skill-interaction.ts`;
 const base = `${repo}/.agents/notes/inline-skill-runtime/interaction`;
 mkdirSync(base, { recursive: true });
 const out = mkdtempSync(`${base}/run.`);
-const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
-const tmux = (...args) => execFileSync('tmux', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-const sleep = ms => new Promise(done => setTimeout(done, ms));
-const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex');
-function ccHashes() {
-  const files = [];
-  function walk(path) {
-    for (const entry of readdirSync(path, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      const file = `${path}/${entry.name}`;
-      if (entry.isDirectory()) walk(file);
-      else if (entry.isFile() || entry.isSymbolicLink()) files.push({ path: file.slice(ccRoot.length + 1), sha256: hash(file) });
-    }
-  }
-  walk(`${ccRoot}/extensions`);
-  return files;
-}
-const before = ccHashes();
+const before = snapshotExtensionHashes(ccRoot);
 writeFileSync(`${out}/cc-hashes-before.json`, JSON.stringify(before, null, 2));
 const sourcePaths = [cli, cc, project, `${repo}/extensions/skill-cards.ts`, observer];
 const sources = sourcePaths.map(path => ({ path, realpath: realpathSync(path), sha256: hash(path) }));
@@ -259,7 +244,7 @@ try {
 } catch (error) { record('environment', 'BLOCKED', String(error)); }
 finally {
   kill();
-  const after = ccHashes();
+  const after = snapshotExtensionHashes(ccRoot);
   writeFileSync(`${out}/cc-hashes-after.json`, JSON.stringify(after, null, 2));
   record('installed-cc-hashes', JSON.stringify(before) === JSON.stringify(after) ? 'PASS' : 'ISSUES', `${before.length} CC extension files compared`);
   const sourcesAfter = sourcePaths.map(path => ({ path, realpath: realpathSync(path), sha256: hash(path) }));
